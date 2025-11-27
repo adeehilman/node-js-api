@@ -1,41 +1,52 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+require('dotenv').config();
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+const authRoutes = require('./routes/auth');
 
-var app = express();
+const app = express();
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
+app.use(helmet());
 
-app.use(logger('dev'));
+app.use(cors({
+  origin: "http://localhost:3000",
+  credentials: true,
+}));
+
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
+app.use('/auth', rateLimit({ windowMs: 15*60*1000, max: 50 }), authRoutes);
 
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404));
+app.listen(process.env.PORT, () => {
+  console.log(`API running at http://localhost:${process.env.PORT}`);
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+// ---------- 404 Handler (Route not found) ----------
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    path: req.originalUrl
+  });
 });
 
-module.exports = app;
+// ---------- Global Error Handler ----------
+app.use((err, req, res, next) => {
+  console.error("🔥 SERVER ERROR:", err);
+
+  return res.status(err.status || 500).json({
+    success: false,
+    response: err.status || 500,
+    messageType: err.status >= 500 ? "E" : "W",
+    message: err.message || "Internal server error",
+    details: err.details || null,
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    path: req.originalUrl,
+    status: err.status || 500,
+    details: err.details || null
+  });
+});
